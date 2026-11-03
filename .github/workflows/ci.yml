@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: API build, unit tests and smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore
+        run: dotnet restore SchoolErp.slnx
+
+      - name: Build
+        run: dotnet build SchoolErp.slnx --no-restore --configuration Release
+
+      - name: Unit and database tests
+        run: dotnet test SchoolErp.slnx --no-build --configuration Release --logger "trx;LogFileName=results.trx" --results-directory test-results
+
+      - name: Start the API on a freshly seeded database
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ASPNETCORE_URLS: http://localhost:5080
+        run: |
+          nohup dotnet run --no-build --configuration Release --project src/SchoolErp.Api > api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:5080/api/health && exit 0
+            sleep 2
+          done
+          echo "API did not start"; cat api.log; exit 1
+
+      - name: End-to-end smoke test
+        run: python tests/smoke/smoke.py src/SchoolErp.Api/appsettings.Development.json
+
+      - name: Server errors during the smoke test
+        if: always()
+        run: |
+          if grep -E "fail:|Unhandled exception" api.log; then echo "::error::The API logged errors"; exit 1; fi
+
+      - name: Upload test results and API log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-results
+          path: |
+            test-results/
+            api.log
+          if-no-files-found: ignore
+
+  web:
+    name: Web app build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Production build
+        run: npx ng build --configuration production
