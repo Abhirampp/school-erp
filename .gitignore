@@ -1,0 +1,12 @@
+bin/
+obj/
+node_modules/
+dist/
+.angular/
+*.db
+*.db-shm
+*.db-wal
+App_Data/
+src/SchoolErp.Api/wwwroot/
+.vs/
+*.user

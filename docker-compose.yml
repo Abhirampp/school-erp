@@ -1,0 +1,18 @@
+# Optional PostgreSQL for local development. The app defaults to SQLite and needs none of this.
+# Start:  docker compose up -d
+# Then run the API with:
+#   Database__Provider=postgres
+#   ConnectionStrings__Default="Host=localhost;Database=schoolerp;Username=schoolerp;Password=<the password below>"
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: schoolerp
+      POSTGRES_USER: schoolerp
+      POSTGRES_PASSWORD: change-me-local-only
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
